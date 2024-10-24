@@ -1,0 +1,3 @@
+[submodule "scripts/kmer-db_stdout_noInfo"]
+	path = scripts/kmer-db_stdout_noInfo
+	url = https://github.com/haneubau/kmer-db_stdout_noInfo.git
