@@ -1,0 +1,38 @@
+##### params #####
+
+cores: 1
+
+# whether or not eggNOG DB has been downloaded already
+# True = it's on my machine, False = it ain't
+# has to be active only once!
+eggNOG_DB: False
+
+# path to eggNOG DB
+pteggDB: "PATH/TO/DIAMOND.DB"
+
+##### inputs (there already) #####
+
+# Path to the fasta directory
+input_file: "data/fasta/"
+
+# General output directory
+general_output: "output"
+
+# Subdirectories for different output types
+gff_dir: "gff"
+bed_dir: "bed"
+prime_region_dir: "prime-region"
+prot_fa_dir: "prot_fa"
+egg: "eggNOG_out"
+
+# concatenated fasta files
+all: "all.fa"
+
+# deduplicated 5'-regions
+dedup: "dedup.fa"
+
+# kmer-DB containing centroids and base62 IDs
+db: "dedup.db"
+
+# hash-tree-like folder system
+exp: "IDtree"

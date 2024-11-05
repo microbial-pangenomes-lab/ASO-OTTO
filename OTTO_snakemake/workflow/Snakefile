@@ -1,0 +1,198 @@
+import os
+
+##### config file #####
+
+configfile: "config/config.yaml"
+
+# Define directories from config
+INPUT_FILE = config["input_file"]
+GENERAL_OUTPUT = config["general_output"]
+GFF_DIR = config["gff_dir"]
+BED_DIR = config["bed_dir"]
+PRIME_REGION_DIR = config["prime_region_dir"]
+DEDUP = config["dedup"]
+DB = config["db"]
+ALLFA = config["all"]
+PROT_FA = config["prot_fa_dir"]
+EGG = config["egg"]
+eggNOG_DB = config["eggNOG_DB"]
+PTEGGDB = config["pteggDB"]
+IDTREE = config["exp"]
+THREADS = config["cores"]
+                    ###################################################################change rules to zip the intermediate files! remember to unzip before every rule!
+                    
+##### preparation #####
+
+# Define wildcards based on FASTA filenames
+SAMPLES = [os.path.splitext(os.path.basename(f))[0].rstrip(".fna") for f in os.listdir(INPUT_FILE)]
+
+##### rule all - Target rule #####
+
+rule all:
+    input:
+        # Collect final output files for each sample
+        expand(os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, BED_DIR, "{sample}.bed"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, EGG, "{sample}.emapper.annotations"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_cog.fa"), sample=SAMPLES),
+        os.path.join(GENERAL_OUTPUT, ALLFA),
+        os.path.join(GENERAL_OUTPUT, DEDUP),
+        os.path.join(GENERAL_OUTPUT, IDTREE),
+        os.path.join(GENERAL_OUTPUT, f"{DEDUP}.txt"),
+        os.path.join(GENERAL_OUTPUT, DB)
+        
+
+
+##### rules #####
+
+# Rule to run Prodigal and generate GFF files
+rule run_prodigal:
+    input:
+        fasta=os.path.join(INPUT_FILE, "{sample}.fna")
+    output:
+        gff=os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff")
+    conda:
+        "envs/prodigal.yaml"
+    threads: THREADS
+    shell:
+        """
+        mkdir -p {GENERAL_OUTPUT}/{GFF_DIR}
+        prodigal -i {input.fasta} -o {output.gff} -f gff
+        """
+
+# Rule to process GFF into BED
+rule process_gff:
+    input:
+        gff=os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff")
+    output:
+        bed=os.path.join(GENERAL_OUTPUT, BED_DIR, "{sample}.bed")
+    threads: THREADS
+    shell:
+        """
+        mkdir -p {GENERAL_OUTPUT}/{BED_DIR}
+        bash workflow/scripts/gene_start_extender.sh {input.gff} {output.bed}
+        """
+
+#######################################################################################change to proper bedtools command!!!!!!!!!!
+# Rule to generate 5'-region FASTA using BEDTools
+rule generate_5prime_fasta:
+    input:
+        fasta=os.path.join(INPUT_FILE, "{sample}.fna"),
+        bed=os.path.join(GENERAL_OUTPUT, BED_DIR, "{sample}.bed")
+    output:
+        fasta=os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta")
+    params:
+        bedtools_params=config.get("bedtools_params", "")
+    conda:
+        "envs/bedtools.yaml"
+    threads: THREADS
+    shell:
+        """
+        mkdir -p {GENERAL_OUTPUT}/{PRIME_REGION_DIR}
+        bedtools getfasta -fi {input.fasta} -bed {input.bed} -name -s 2> /dev/null | 
+        while read line ; do 
+          if [[ $line = ">"* ]] ; then 
+            echo ${{line%::*}}::{wildcards.sample} ;
+            else echo $line ;
+          fi ; 
+        done > {output.fasta}
+        """
+
+if eggNOG_DB:
+  rule DL_eggNOG_DB:
+      input: dlpath=EGGDB
+      conda:
+          "envs/eggNOG.yaml"
+      shell:
+          """
+          python download_eggnog_data.py --data_dir {input.dlpath}
+          """
+
+###################have to change gff2faa.py still. configure for this workflow specifically
+rule prepare_eggNOG:
+    input:
+        fasta=os.path.join(INPUT_FILE, "{sample}.fna"),
+        gff=os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff")
+    output:
+        prot_fa=os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa")
+    shell:
+        """
+        mkdir -p {GENERAL_OUTPUT}/{GFF_DIR}
+        python workflow/scripts/gff2faa.py {input.gff} {input.fasta} {wildcards.sample} > {output.prot_fa}
+        """
+
+rule eggNOG:
+    input:
+        prot_fa=os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa")
+    output:
+        annotation=os.path.join(GENERAL_OUTPUT, EGG, "{sample}.emapper.annotations")
+    conda:
+        "envs/eggNOG.yaml"
+    shell:
+        """
+        mkdir -p {GENERAL_OUTPUT}/{EGG}
+        emapper.py -m diamond --itype proteins -i {input.prot_fa} -o {wildcards.sample} --output_dir {GENERAL_OUTPUT}/{EGG} --data_dir {PTEGGDB} --cpu 5 --outfmt_short --dmnd_iterate no --dbmem --sensmode fast
+        """
+
+rule append_COGs:
+    input:
+        fasta=os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta"),
+        annotation=os.path.join(GENERAL_OUTPUT, EGG, "{sample}.emapper.annotations")
+    output:
+        cogfa=os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_cog.fa")
+    shell:
+        """
+        python workflow/scripts/cog_appender.py {input.fasta} {input.annotation} > {output.cogfa}
+        """
+
+# rule to concatenate all 5'-region fastas into one large fasta file, containing all 5'regions.
+rule create_all_fa:
+    input:
+        expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_cog.fa"), sample=SAMPLES)
+    output:
+        allfa=os.path.join(GENERAL_OUTPUT, ALLFA)
+    shell:
+        """
+        cat {input} > {output.allfa}
+        """
+
+# Rule to find centroids and allocate base62_IDs
+rule create_centroids:
+    input:
+        allfa=os.path.join(GENERAL_OUTPUT, ALLFA)
+    output:
+        dedup=os.path.join(GENERAL_OUTPUT, DEDUP)
+    shell:
+        """
+        cat {input.allfa} |
+        python workflow/scripts/find_exact_matches.py > {output.dedup}
+        """
+
+# Rule to find centroids and allocate base62_IDs
+rule store_centroids:
+    input:
+        allfa=os.path.join(GENERAL_OUTPUT, ALLFA),
+        dedup=os.path.join(GENERAL_OUTPUT, DEDUP)
+    output:
+        directory(os.path.join(GENERAL_OUTPUT, IDTREE))
+    shell:
+        """
+        mkdir -p {output}
+        cat {input.allfa} |
+        python workflow/scripts/store_clusters.py {input.dedup} {output} 
+        """
+
+# rule to create kmerdb
+rule kmer_db:
+    input:
+        dedup=os.path.join(GENERAL_OUTPUT, DEDUP)
+    output:
+        txtfile=os.path.join(GENERAL_OUTPUT, f"{DEDUP}.txt"),
+        db=os.path.join(GENERAL_OUTPUT, DB)
+    shell:
+        """
+        echo {input.dedup} > {output.txtfile}
+        ../scripts/kmer-db_stdout_noInfo/kmer-db build -multisample-fasta -k 12 -t 1 {output.txtfile} {output.db} 
+        """
