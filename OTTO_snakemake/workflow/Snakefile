@@ -22,8 +22,6 @@ THREADS = config["cores"]
 
 ##### TO-DO: #####
 #change rules to zip/unzip files                    
-#change download eggnog database to only downoad the dmnd database?
-
 
 ##### preparation #####
 
@@ -110,7 +108,7 @@ if eggNOG_DB:
           "envs/eggNOG.yaml"
       shell:
           """
-          python download_eggnog_data.py --data_dir {input.dlpath}
+          download_eggnog_data.py --data_dir {input.dlpath}
           """
 
 # Rule to translate fna files to faa
