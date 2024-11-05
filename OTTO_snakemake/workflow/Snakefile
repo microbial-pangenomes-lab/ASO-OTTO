@@ -19,8 +19,12 @@ eggNOG_DB = config["eggNOG_DB"]
 PTEGGDB = config["pteggDB"]
 IDTREE = config["exp"]
 THREADS = config["cores"]
-                    ###################################################################change rules to zip the intermediate files! remember to unzip before every rule!
-                    
+
+##### TO-DO: #####
+#change rules to zip/unzip files                    
+#change download eggnog database to only downoad the dmnd database?
+
+
 ##### preparation #####
 
 # Define wildcards based on FASTA filenames
@@ -75,7 +79,6 @@ rule process_gff:
         bash workflow/scripts/gene_start_extender.sh {input.gff} {output.bed}
         """
 
-#######################################################################################change to proper bedtools command!!!!!!!!!!
 # Rule to generate 5'-region FASTA using BEDTools
 rule generate_5prime_fasta:
     input:
@@ -99,7 +102,7 @@ rule generate_5prime_fasta:
           fi ; 
         done > {output.fasta}
         """
-
+# check if EggNOG database is present and download if not
 if eggNOG_DB:
   rule DL_eggNOG_DB:
       input: dlpath=EGGDB
@@ -110,7 +113,7 @@ if eggNOG_DB:
           python download_eggnog_data.py --data_dir {input.dlpath}
           """
 
-###################have to change gff2faa.py still. configure for this workflow specifically
+# Rule to translate fna files to faa
 rule prepare_eggNOG:
     input:
         fasta=os.path.join(INPUT_FILE, "{sample}.fna"),
@@ -122,7 +125,7 @@ rule prepare_eggNOG:
         mkdir -p {GENERAL_OUTPUT}/{GFF_DIR}
         python workflow/scripts/gff2faa.py {input.gff} {input.fasta} {wildcards.sample} > {output.prot_fa}
         """
-
+# Rule to annotate proteins with COG using EggNOG
 rule eggNOG:
     input:
         prot_fa=os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa")
@@ -135,7 +138,7 @@ rule eggNOG:
         mkdir -p {GENERAL_OUTPUT}/{EGG}
         emapper.py -m diamond --itype proteins -i {input.prot_fa} -o {wildcards.sample} --output_dir {GENERAL_OUTPUT}/{EGG} --data_dir {PTEGGDB} --cpu 5 --outfmt_short --dmnd_iterate no --dbmem --sensmode fast
         """
-
+# Rule that extracts gene::sample pairs from the EggNOG output and adds COGs to 5'-region fasta headers
 rule append_COGs:
     input:
         fasta=os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta"),
@@ -184,7 +187,7 @@ rule store_centroids:
         python workflow/scripts/store_clusters.py {input.dedup} {output} 
         """
 
-# rule to create kmerdb
+# Rule to create kmerdb from centroids
 rule kmer_db:
     input:
         dedup=os.path.join(GENERAL_OUTPUT, DEDUP)
