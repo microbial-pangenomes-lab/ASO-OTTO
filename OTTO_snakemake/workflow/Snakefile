@@ -1,5 +1,6 @@
 import os
 
+
 ##### config file #####
 
 configfile: "config/config.yaml"
@@ -11,7 +12,6 @@ GFF_DIR = config["gff_dir"]
 BED_DIR = config["bed_dir"]
 PRIME_REGION_DIR = config["prime_region_dir"]
 DEDUP = config["dedup"]
-DB = config["db"]
 ALLFA = config["all"]
 PROT_FA = config["prot_fa_dir"]
 EGG = config["egg"]
@@ -19,45 +19,68 @@ eggNOG_DB = config["eggNOG_DB"]
 PTEGGDB = config["pteggDB"]
 IDTREE = config["exp"]
 THREADS = config["cores"]
+KRAKEN2_DB = config["Kraken2_DB"]
+PTKRAKEN2_DB = config["ptkrakDB"]
+KRAK_OUT = config["krak"]
+TMP_FA = config["tmp_fa"]
+TAFI = config["tafi"]
+FASTMODE = config["fastmode"]
+ALLFAA = config["allfaa"]
+SUFFIX = config["file_suffix"]
+KMER_SIZE = config["k"]
 
 ##### TO-DO: #####
-#change rules to zip/unzip files                    
+# change rules to zip/unzip files    
+# add rule to check for ncbi tax_dump files
 
 ##### preparation #####
 
-# Define wildcards based on FASTA filenames
-SAMPLES = [os.path.splitext(os.path.basename(f))[0].rstrip(".fna") for f in os.listdir(INPUT_FILE)]
+# Define a tuple of allowed extensions
+allowed_extensions = (".fa", ".fna", ".fasta")
+
+# Define SAMPLES based on files with extensions in `allowed_extensions`
+SAMPLES = [os.path.splitext(os.path.basename(f))[0] for f in os.listdir(INPUT_FILE) if f.endswith(allowed_extensions)]
+
+all_out = [expand(os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, BED_DIR, "{sample}.bed"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, TMP_FA, "{sample}_tmp.fna"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, KRAK_OUT, "{sample}_kraken2_out.txt"), sample=SAMPLES),
+        expand(os.path.join(GENERAL_OUTPUT, "k{sizes}.db"), sizes=KMER_SIZE),
+        os.path.join(GENERAL_OUTPUT, KRAK_OUT, "Kraken2_out.txt"),
+        os.path.join(GENERAL_OUTPUT, ALLFA),
+        os.path.join(GENERAL_OUTPUT, DEDUP),
+        os.path.join(GENERAL_OUTPUT, IDTREE),
+        os.path.join(GENERAL_OUTPUT, f"{DEDUP}.txt"),
+        os.path.join(GENERAL_OUTPUT, KRAK_OUT,"tax_ran_in.txt"),
+        os.path.join(GENERAL_OUTPUT, "taxonomy_file.tsv"),
+        os.path.join(GENERAL_OUTPUT, TAFI)]
+
+if FASTMODE:
+    all_out.append(os.path.join(GENERAL_OUTPUT, PROT_FA, ALLFAA))
+    all_out.append(os.path.join(GENERAL_OUTPUT, EGG, "all.emapper.annotations"))
+else:
+    all_out.append(expand(os.path.join(GENERAL_OUTPUT, EGG, "{sample}.emapper.annotations"), sample=SAMPLES))
+    all_out.append(expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_cog.fa"), sample=SAMPLES))
 
 ##### rule all - Target rule #####
 
 rule all:
     input:
         # Collect final output files for each sample
-        expand(os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff"), sample=SAMPLES),
-        expand(os.path.join(GENERAL_OUTPUT, BED_DIR, "{sample}.bed"), sample=SAMPLES),
-        expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta"), sample=SAMPLES),
-        expand(os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa"), sample=SAMPLES),
-        expand(os.path.join(GENERAL_OUTPUT, EGG, "{sample}.emapper.annotations"), sample=SAMPLES),
-        expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_cog.fa"), sample=SAMPLES),
-        os.path.join(GENERAL_OUTPUT, ALLFA),
-        os.path.join(GENERAL_OUTPUT, DEDUP),
-        os.path.join(GENERAL_OUTPUT, IDTREE),
-        os.path.join(GENERAL_OUTPUT, f"{DEDUP}.txt"),
-        os.path.join(GENERAL_OUTPUT, DB)
-        
-
+        all_out
 
 ##### rules #####
 
 # Rule to run Prodigal and generate GFF files
 rule run_prodigal:
     input:
-        fasta=os.path.join(INPUT_FILE, "{sample}.fna")
+        fasta=os.path.join(INPUT_FILE, "{sample}"+SUFFIX)
     output:
         gff=os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff")
     conda:
         "envs/prodigal.yaml"
-    threads: THREADS
     shell:
         """
         mkdir -p {GENERAL_OUTPUT}/{GFF_DIR}
@@ -70,7 +93,6 @@ rule process_gff:
         gff=os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff")
     output:
         bed=os.path.join(GENERAL_OUTPUT, BED_DIR, "{sample}.bed")
-    threads: THREADS
     shell:
         """
         mkdir -p {GENERAL_OUTPUT}/{BED_DIR}
@@ -80,7 +102,7 @@ rule process_gff:
 # Rule to generate 5'-region FASTA using BEDTools
 rule generate_5prime_fasta:
     input:
-        fasta=os.path.join(INPUT_FILE, "{sample}.fna"),
+        fasta=os.path.join(INPUT_FILE, "{sample}"+SUFFIX),
         bed=os.path.join(GENERAL_OUTPUT, BED_DIR, "{sample}.bed")
     output:
         fasta=os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta")
@@ -88,7 +110,6 @@ rule generate_5prime_fasta:
         bedtools_params=config.get("bedtools_params", "")
     conda:
         "envs/bedtools.yaml"
-    threads: THREADS
     shell:
         """
         mkdir -p {GENERAL_OUTPUT}/{PRIME_REGION_DIR}
@@ -100,76 +121,132 @@ rule generate_5prime_fasta:
           fi ; 
         done > {output.fasta}
         """
+
 # check if EggNOG database is present and download if not
-if eggNOG_DB:
-  rule DL_eggNOG_DB:
-      input: dlpath=EGGDB
-      conda:
-          "envs/eggNOG.yaml"
-      shell:
-          """
-          download_eggnog_data.py --data_dir {input.dlpath}
-          """
+if not eggNOG_DB:
+    rule DL_eggNOG_DB:
+        input:
+            dlpath=PTEGGDB
+        conda:
+            "envs/eggNOG.yaml"
+        shell:
+            """
+            download_eggnog_data.py --data_dir {input.dlpath}
+            """
 
 # Rule to translate fna files to faa
 rule prepare_eggNOG:
     input:
-        fasta=os.path.join(INPUT_FILE, "{sample}.fna"),
+        fasta=os.path.join(INPUT_FILE, "{sample}"+SUFFIX),
         gff=os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff")
+    conda:
+        "envs/gff2faa.yaml"
     output:
         prot_fa=os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa")
     shell:
         """
-        mkdir -p {GENERAL_OUTPUT}/{GFF_DIR}
+        mkdir -p {GENERAL_OUTPUT}/{PROT_FA}
         python workflow/scripts/gff2faa.py {input.gff} {input.fasta} {wildcards.sample} > {output.prot_fa}
         """
-# Rule to annotate proteins with COG using EggNOG
-rule eggNOG:
-    input:
-        prot_fa=os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa")
-    output:
-        annotation=os.path.join(GENERAL_OUTPUT, EGG, "{sample}.emapper.annotations")
-    conda:
-        "envs/eggNOG.yaml"
-    shell:
-        """
-        mkdir -p {GENERAL_OUTPUT}/{EGG}
-        emapper.py -m diamond --itype proteins -i {input.prot_fa} -o {wildcards.sample} --output_dir {GENERAL_OUTPUT}/{EGG} --data_dir {PTEGGDB} --cpu 5 --outfmt_short --dmnd_iterate no --dbmem --sensmode fast
-        """
-# Rule that extracts gene::sample pairs from the EggNOG output and adds COGs to 5'-region fasta headers
-rule append_COGs:
-    input:
-        fasta=os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta"),
-        annotation=os.path.join(GENERAL_OUTPUT, EGG, "{sample}.emapper.annotations")
-    output:
-        cogfa=os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_cog.fa")
-    shell:
-        """
-        python workflow/scripts/cog_appender.py {input.fasta} {input.annotation} > {output.cogfa}
-        """
 
-# rule to concatenate all 5'-region fastas into one large fasta file, containing all 5'regions.
-rule create_all_fa:
-    input:
-        expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_cog.fa"), sample=SAMPLES)
-    output:
-        allfa=os.path.join(GENERAL_OUTPUT, ALLFA)
-    shell:
-        """
-        cat {input} > {output.allfa}
-        """
+if FASTMODE:
+    rule concat_faa:
+        input:
+            expand(os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa"), sample=SAMPLES)
+        output:
+            allfaa=os.path.join(GENERAL_OUTPUT, PROT_FA, ALLFAA)
+        shell:
+            """
+            mkdir -p {GENERAL_OUTPUT}/{PROT_FA}
+            cat {input} > {output.allfaa}
+            """
+
+    rule eggnog_once:
+        input:
+            allfaa=os.path.join(GENERAL_OUTPUT, PROT_FA, ALLFAA)
+        conda:
+            "envs/eggNOG.yaml"
+        output:
+            annotation=os.path.join(GENERAL_OUTPUT, EGG, "all.emapper.annotations")
+        threads: THREADS
+        shell:
+            """
+            mkdir -p {GENERAL_OUTPUT}/{EGG}
+            emapper.py -m diamond --itype proteins -i {input.allfaa} -o all --output_dir {GENERAL_OUTPUT}/{EGG} --data_dir {PTEGGDB} --cpu {THREADS} --outfmt_short --dmnd_iterate yes --dbmem --sensmode sensitive --override
+            """
+
+    rule create_all_fa:
+        input:
+            annotation=os.path.join(GENERAL_OUTPUT, EGG, "all.emapper.annotations"),
+            singfa=expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta"), sample=SAMPLES)
+        output:
+            allfa=os.path.join(GENERAL_OUTPUT, ALLFA)
+        shell:
+            """
+            python workflow/scripts/cog_appender.py <(cat {input.singfa}) {input.annotation} > {output.allfa}
+            """
+
+# Rule to annotate proteins with COG using EggNOG
+else:
+    rule eggNOG:
+        input:
+            prot_fa=os.path.join(GENERAL_OUTPUT, PROT_FA, "{sample}.faa")
+        output:
+            annotation=os.path.join(GENERAL_OUTPUT, EGG, "{sample}.emapper.annotations")
+        threads: THREADS
+        conda:
+            "envs/eggNOG.yaml"
+        shell:
+            """
+            mkdir -p {GENERAL_OUTPUT}/{EGG}
+            emapper.py -m diamond --itype proteins -i {input.prot_fa} -o {wildcards.sample} --output_dir {GENERAL_OUTPUT}/{EGG} --data_dir {PTEGGDB} --cpu {THREADS} --outfmt_short --dmnd_iterate no --sensmode fast --override
+            """
+
+    # Rule that extracts gene::sample pairs from the EggNOG output and adds COGs to 5'-region fasta headers
+    rule append_COGs:
+        input:
+            fasta=os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta"),
+            annotation=os.path.join(GENERAL_OUTPUT, EGG, "{sample}.emapper.annotations")
+        output:
+            cogfa=os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_cog.fa")
+        shell:
+            """
+            python workflow/scripts/cog_appender.py {input.fasta} {input.annotation} > {output.cogfa}
+            """
+
+    # rule to concatenate all 5'-region fastas into one large fasta file, containing all 5'regions.
+    rule create_all_fa:
+        input:
+            expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_cog.fa"), sample=SAMPLES)
+        output:
+            allfa=os.path.join(GENERAL_OUTPUT, ALLFA)
+        shell:
+            """
+            cat {input} > {output.allfa}
+            """
 
 # Rule to find centroids and allocate base62_IDs
 rule create_centroids:
     input:
         allfa=os.path.join(GENERAL_OUTPUT, ALLFA)
     output:
-        dedup=os.path.join(GENERAL_OUTPUT, DEDUP)
+        dedup=os.path.join(GENERAL_OUTPUT, DEDUP),
     shell:
         """
         cat {input.allfa} |
         python workflow/scripts/find_exact_matches.py > {output.dedup}
         """
+
+rule create_link_file:
+    input:
+        dedup=os.path.join(GENERAL_OUTPUT, DEDUP)
+    output:
+        txtfile=os.path.join(GENERAL_OUTPUT, f"{DEDUP}.txt")
+    shell:
+        """
+        echo {input.dedup} > {output.txtfile}
+        """
+
 
 # Rule to find centroids and allocate base62_IDs
 rule store_centroids:
@@ -188,12 +265,92 @@ rule store_centroids:
 # Rule to create kmerdb from centroids
 rule kmer_db:
     input:
-        dedup=os.path.join(GENERAL_OUTPUT, DEDUP)
+        txtfile=os.path.join(GENERAL_OUTPUT, f"{DEDUP}.txt")
     output:
-        txtfile=os.path.join(GENERAL_OUTPUT, f"{DEDUP}.txt"),
-        db=os.path.join(GENERAL_OUTPUT, DB)
+        db=os.path.join(GENERAL_OUTPUT, "k{sizes}.db")
+    params:
+        ksize="{sizes}"
     shell:
         """
-        echo {input.dedup} > {output.txtfile}
-        ../scripts/kmer-db_stdout_noInfo/kmer-db build -multisample-fasta -k 12 -t 1 {output.txtfile} {output.db} 
+        ../scripts/kmer-db_stdout_noInfo/kmer-db build -multisample-fasta -k {params.ksize} -t 1 {input.txtfile} {output.db} 
+        """
+
+if not KRAKEN2_DB:
+  rule DL_KRAKEN2_DB:
+      input: 
+            dlpath=PTKRAKEN2_DB
+      conda:
+          "envs/kraken2.yaml"
+      shell:
+          """
+          kraken2-build --download-taxonomy --db {input.dlpath}
+          """
+
+# Rule to create intermediate fasta files to feed to Kraken2. 
+# These fasta files only have one header, which contains the strain name/fasta file name
+rule prepare_Kraken2:
+    input:
+        fasta=os.path.join(INPUT_FILE, "{sample}"+SUFFIX)
+    output:
+        tmp_fasta=os.path.join(GENERAL_OUTPUT, TMP_FA, "{sample}_tmp.fna")
+    shell:
+        """
+        mkdir -p {GENERAL_OUTPUT}/{TMP_FA}
+        echo ">{wildcards.sample}" > {output.tmp_fasta}
+        grep -v ">" {input.fasta} >> {output.tmp_fasta}
+        """
+
+# Rule to run Kraken2 on each individual `_tmp.fna` file
+rule Kraken2_single:
+    input:
+        tmp_fa=os.path.join(GENERAL_OUTPUT, TMP_FA, "{sample}_tmp.fna")
+    output:
+        spec_out=os.path.join(GENERAL_OUTPUT, KRAK_OUT, "{sample}_kraken2_out.txt")
+    conda:
+        "envs/kraken2.yaml"
+    shell:
+        """
+        mkdir -p {GENERAL_OUTPUT}/{KRAK_OUT}
+        kraken2 --db {PTKRAKEN2_DB} --memory-mapping --quick --use-names {input.tmp_fa} 2> /dev/null |
+        awk -F $'\t' '{{sub(/ \(taxid.*/, "", $3); print $2, $3}}' > {output.spec_out}
+        """
+
+# Rule to combine the outputs from each sample into the final consolidated files
+rule Kraken2_consolidate:
+    input:
+        spec_outs=expand(os.path.join(GENERAL_OUTPUT, KRAK_OUT, "{sample}_kraken2_out.txt"), sample=SAMPLES)
+    output:
+        spec_names=os.path.join(GENERAL_OUTPUT, KRAK_OUT, "Kraken2_out.txt"),
+        tarain=os.path.join(GENERAL_OUTPUT, KRAK_OUT, "tax_ran_in.txt")
+    shell:
+        """
+        cat {input.spec_outs} > {output.spec_names}
+        cut -d' ' -f2- {output.spec_names} | sort -u > {output.tarain}
+        """
+
+
+
+# rule to add the full taxonomy of samples using taxonomy ranks
+rule Tax_ranks:
+    input:
+        tarain=os.path.join(GENERAL_OUTPUT, KRAK_OUT, "tax_ran_in.txt")
+    output:
+        tax_fi=os.path.join(GENERAL_OUTPUT, "taxonomy_file.tsv")
+    conda:
+        "envs/taxonomy_ranks.yaml"
+    shell:
+        """
+        taxaranks -v -i {input.tarain} -o {output.tax_fi}
+        """
+        
+# rule to correlate sample ids and their taxonomy
+rule taxonomy_to_sample_ID:
+    input:
+        spec_names=os.path.join(GENERAL_OUTPUT, KRAK_OUT, "Kraken2_out.txt"),
+        tax_fi=os.path.join(GENERAL_OUTPUT, "taxonomy_file.tsv")
+    output:
+        tax_n_ID=os.path.join(GENERAL_OUTPUT, TAFI)
+    shell:
+        """
+        python workflow/scripts/tax2sample.py {input.tax_fi} {input.spec_names} {output.tax_n_ID}
         """

@@ -8,6 +8,7 @@ output="OTTOput"
 kmer_db="dedup.db"
 idx_tree="out"
 
+################################################################## specify help message! #################################################################
 # Function to display help message
 usage() {
     echo "Usage: $0 -a <ASOfile> -c <cores> -m <mismatches> -o <output> -k <kmer_db> -i <idx_tree>"
@@ -59,7 +60,7 @@ if [ ! -f "$ASOfile" ]; then
 fi
 
 # check if kmer-DB exists
-if [ ! -f "$kmer_db" ]; then
+if [ ! -d "$kmer_db" ]; then
   echo "$kmer_db does not exist!"
   usage
 fi
@@ -86,10 +87,24 @@ python scripts/ASO_permutation.py -a $ASOfile \
 
 # query the kmer-DB for matching sequences and return
 # hit centroids
-scripts/kmer-db_stdout_noInfo/kmer-db new2all -multisample-fasta \
-                                            -sparse \
-                                            -t 1 $kmer_db ${output}/permutation_fasta.txt \
-                                            /dev/null | \
+for kmerlength in $output/*permutation_fasta.txt; do
+  nopath=${kmerlength#*/}
+  k=${nopath%permutation_fasta.txt};
+  if [ ! -f "${kmer_db}/${k}.db" ]; then
+    echo "there is no database for k-mer length ${k} in directory ${kmer_db}!"
+    echo "use the OTTO snakemake-pipeline to create the neccessary database."
+    exit 1
+  fi;
+done
+
+for kmerlength in $output/*permutation_fasta.txt; do
+  nopath=${kmerlength#*/}
+  k=${nopath%permutation_fasta.txt};
+  scripts/kmer-db_stdout_noInfo/kmer-db new2all -multisample-fasta \
+                                              -sparse \
+                                              -t 1 "${kmer_db}/${k}.db" ${kmerlength} \
+                                              /dev/null ;
+done | \
 
 # match the hit centroids to aligned 5'-regions and return
 # sample, gene and COG

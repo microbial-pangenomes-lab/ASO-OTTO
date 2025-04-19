@@ -1,19 +1,33 @@
 ##### params #####
 
-cores: 1
+cores: 20
 
-# whether or not eggNOG DB has been downloaded already
+fastmode: True
+
+k: [8,9,10,11,12]
+
+# whether or not eggNOG DB and/or Kraken2 DB has been downloaded already
 # True = it's on my machine, False = it ain't
 # has to be active only once!
-eggNOG_DB: False
+
+eggNOG_DB: True
+
+Kraken2_DB: True
+
 
 # path to eggNOG DB
-pteggDB: "PATH/TO/DIAMOND.DB"
+pteggDB: "/path/to/my/eggNOG_DB"
 
-##### inputs (there already) #####
+# path to Kraken2 DB
+ptkrakDB: "/path/to/my/Kraken2_DB"
+
+##### input  #####
 
 # Path to the fasta directory
 input_file: "data/fasta/"
+
+# file suffix of the fasta files (usually something like fasta, fa or fna)
+file_suffix: ".fasta"
 
 # General output directory
 general_output: "output"
@@ -24,15 +38,19 @@ bed_dir: "bed"
 prime_region_dir: "prime-region"
 prot_fa_dir: "prot_fa"
 egg: "eggNOG_out"
+krak: "krak_out"
+tmp_fa: "tmp_fa"
 
 # concatenated fasta files
 all: "all.fa"
 
+allfaa: "all.faa"
+
 # deduplicated 5'-regions
 dedup: "dedup.fa"
 
-# kmer-DB containing centroids and base62 IDs
-db: "dedup.db"
-
 # hash-tree-like folder system
 exp: "IDtree"
+
+# final taxonomy file, correlating sample ID and its full taxonomy
+tafi: "full_taxonomy.tsv"

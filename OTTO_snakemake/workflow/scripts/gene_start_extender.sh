@@ -10,13 +10,13 @@ awk -F $'\t' '
 
     #Calculate coordinates based on strand orientation
     if ($7 == "-") {
-        start = ($5 - 10 >= 0) ? $5 - 10 : 0;
+        start = ($5 - 10 >= 0) ? $5 - 10: 0;
         end = $5 + 27;
     } else {
-        start = ($4 - 27 >= 0) ? $4 - 27 : 0;
-        end = $4 + 10;
+        start = ($4 - 27 - 1 >= 0) ? $4 - 27 - 1: 0;
+        end = $4 + 10 - 1;
     }
     
     # output in bed format, keeping sequence sample name, gene name and strand
-    print $1 "\t" start "\t" end "\t" ID "\t" $7
+    print $1 "\t" start "\t" end "\t" ID "\t" "\t" $7
 }' "$1" 1> "$2"
