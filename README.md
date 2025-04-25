@@ -60,7 +60,7 @@ The hash tree-like folder is created as `ASO-OTTO/OTTO_snakemake/output/IDtree` 
 With that you are set to run ASO-OTTO on your own dataset!
 
 ## running ASO-OTTO
-after preparing everything ans converting your genomes into a searchable database you can run ASO-OTTO with:
+after preparing everything and converting your genomes into a searchable database you can run ASO-OTTO with:
 ```
 cd ..
 bash OTTO.sh -a MyASO.fasta -c 1 -m 2 -o MyOutputFolder -k OTTO_snakemake/output -i OTTO_snakemake/output/IDtree
