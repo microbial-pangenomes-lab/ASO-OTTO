@@ -8,23 +8,25 @@ Currently, ASO-OTTO needs to be cloned from github and the submodule (a forked a
 
 clone repository:
 ```
-git clone https://github.com/microbial-pangenomes-lab/ASO-OTTO.git
+git clone --recursive https://github.com/microbial-pangenomes-lab/ASO-OTTO.git
 ```
 
-initialize Kmer-db fork:
-```
-cd ASO-OTTO/scripts/kmer-db_stdout_noInfo
-git submodule update --init
-```
 Follow the steps listed in the forked [Kmer-db](https://github.com/haneubau/kmer-db_stdout_noInfo) repository to compile.
+
 
 To use the ASO-OTTO pipeline, you will need to install Snakemake as well. It can be [installed](https://snakemake.readthedocs.io/en/stable/getting_started/installation.html) by following the instructions on their website.
 
 Basic instructions for installing Snakemake using conda:
 ```
-conda create -c conda-forge -c bioconda -n snakemake snakemake
-conda activate snakemake
+conda create -c conda-forge -c bioconda -n snakemake snakemake 
 ```  
+This installs just the basic snakemake environment. If you want to run the pipeline with this environment you will always have to specify `--use-conda` in the snakemake command!
+
+If you also want to use the visualization script of ASO-OTTO, we recommend to create another conda environment with:
+```
+conda create -c conda-forge -c bioconda -n OTTO numpy=1.26.2 pandas=2.1.4 seaborn=0.13.2 matplotlib=3.8.4
+```
+
 After that you should be good to go!
 
 # Quick-start
@@ -48,7 +50,8 @@ If you work on a system that can handle ~50GB of RAM being used, you can keep th
 After entering the path to your fasta files with `input_file: "data/fasta/"` and specifying the file suffix of your fasta files with `file_suffix: ".fasta"`, you can start the pipeline with:
 
 ```
-snakemake --cores X
+conda activate snakemake
+snakemake --cores X --use-conda
 ```
 
 This will create the databases in `ASO-OTTO/OTTO_snakemake/output` as `kX.db`, depending on how many sizes of k you specified in the config file.
@@ -57,7 +60,7 @@ The hash tree-like folder is created as `ASO-OTTO/OTTO_snakemake/output/IDtree` 
 With that you are set to run ASO-OTTO on your own dataset!
 
 ## running ASO-OTTO
-After preparing everything ans converting your genomes into a searchable database you can run ASO-OTTO with:
+after preparing everything ans converting your genomes into a searchable database you can run ASO-OTTO with:
 ```
 cd ..
 bash OTTO.sh -a MyASO.fasta -c 1 -m 2 -o MyOutputFolder -k OTTO_snakemake/output -i OTTO_snakemake/output/IDtree
@@ -67,6 +70,7 @@ This will create the `results_expanded.txt`, which contains the actual output, `
 
 If your `MyASO.fasta` only contained one ASO, you can directly use the convenience script to visualize it, otherwise you'll need to split the `results_expanded.txt` by the `orig_ID` column.
 ```
+conda activate OTTO
 python scripts/OTTO_viz_new.py -i MyOutputFolder/results_expanded.txt -coi MyCOGOfInterest -t OTTO_snakemake/output/full_taxonomy.tsv 
 ```
 
@@ -75,13 +79,25 @@ That should give you a broad overview of what species/genes were targeted by you
 # Prerequisites
 ASO-OTTO uses:
 ```
+Kmer-db
+```
+
+ASO-OTTO pipeline uses (handled by snakemake):
+```
 Biopython
 numpy
 pandas
+eggNOG
+prodigal
+Kraken2
+Taxonomy-ranks
+bedtools
 ```
 
-OTTO_viz_new.py also requires:
+OTTO_viz_new.py also requires (have to be installed manually):
 ```
-matplotlib
+pandas
+numpy
+matplotlib 
 seaborn
 ```
