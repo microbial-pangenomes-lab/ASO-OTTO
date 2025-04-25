@@ -71,3 +71,17 @@ python scripts/OTTO_viz_new.py -i MyOutputFolder/results_expanded.txt -coi MyCOG
 ```
 
 That should give you a broad overview of what species/genes were targeted by your ASO!
+
+# Prerequisites
+ASO-OTTO uses:
+```
+Biopython
+numpy
+pandas
+```
+
+OTTO_viz_new.py also requires:
+```
+matplotlib
+seaborn
+```
