@@ -41,6 +41,15 @@ allowed_extensions = (".fa", ".fna", ".fasta")
 # Define SAMPLES based on files with extensions in `allowed_extensions`
 SAMPLES = [os.path.splitext(os.path.basename(f))[0] for f in os.listdir(INPUT_FILE) if f.endswith(allowed_extensions)]
 
+# check if databases need to be downloaded and create list of marker files to be added to input of rule_all
+eggNOG_marker = os.path.join(GENERAL_OUTPUT, "eggnogdb_downloaded.txt")
+kraken2_marker = os.path.join(GENERAL_OUTPUT, "kraken2db_downloaded.txt")
+download_targets = []
+if not eggNOG_DB:
+    download_targets.append(eggNOG_marker)
+if not KRAKEN2_DB:
+    download_targets.append(kraken2_marker)
+
 all_out = [expand(os.path.join(GENERAL_OUTPUT, GFF_DIR, "{sample}.gff"), sample=SAMPLES),
         expand(os.path.join(GENERAL_OUTPUT, BED_DIR, "{sample}.bed"), sample=SAMPLES),
         expand(os.path.join(GENERAL_OUTPUT, PRIME_REGION_DIR, "{sample}_5prime.fasta"), sample=SAMPLES),
@@ -69,7 +78,7 @@ else:
 rule all:
     input:
         # Collect final output files for each sample
-        all_out
+        all_out + download_targets
 
 ##### rules #####
 
@@ -125,13 +134,17 @@ rule generate_5prime_fasta:
 # check if EggNOG database is present and download if not
 if not eggNOG_DB:
     rule DL_eggNOG_DB:
-        input:
-            dlpath=PTEGGDB
+        output:
+            eggNOG_marker
         conda:
             "envs/eggNOG.yaml"
+        params:
+            dlpath=PTEGGDB
         shell:
             """
-            download_eggnog_data.py --data_dir {input.dlpath}
+            mkdir -p {params.dlpath}
+            download_eggnog_data.py --data_dir {params.dlpath}
+            touch {output}
             """
 
 # Rule to translate fna files to faa
@@ -276,15 +289,18 @@ rule kmer_db:
         """
 
 if not KRAKEN2_DB:
-  rule DL_KRAKEN2_DB:
-      input: 
+    rule DL_KRAKEN2_DB:
+        output:
+            kraken2_marker
+        conda:
+            "envs/kraken2.yaml"
+        params:
             dlpath=PTKRAKEN2_DB
-      conda:
-          "envs/kraken2.yaml"
-      shell:
-          """
-          kraken2-build --download-taxonomy --db {input.dlpath}
-          """
+        shell:
+            """
+            kraken2-build --download-taxonomy --db {params.dlpath}
+            touch {output}
+            """
 
 # Rule to create intermediate fasta files to feed to Kraken2. 
 # These fasta files only have one header, which contains the strain name/fasta file name
